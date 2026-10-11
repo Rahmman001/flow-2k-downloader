@@ -2,7 +2,7 @@ const DELAY = 1000;
 
 let running = false;
 let paused = false;
-let processed = new WeakSet();
+let processedSrcs = new Set();
 
 let downloaded = 0;
 let failed = 0;
@@ -51,7 +51,7 @@ function findMenuButton(card) {
     }) || buttons[0];
 }
 
-async function waitFor(predicate, timeout = 1200) {
+async function waitFor(predicate, timeout = 1500) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
         const res = predicate();
@@ -62,17 +62,21 @@ async function waitFor(predicate, timeout = 1200) {
 }
 
 function getImageCards() {
-    const cards = [];
-    const seen = new Set();
+    const items = [];
+    const seenSrcs = new Set();
 
     for (const image of getVisibleElements("img")) {
-        if (!image.complete || image.naturalWidth < 100 || image.naturalHeight < 100) {
+        const src = image.currentSrc || image.src || "";
+        if (!src || image.naturalWidth < 80 || image.naturalHeight < 80) {
             continue;
         }
 
+        if (seenSrcs.has(src)) continue;
+        seenSrcs.add(src);
+
         // Walk upward to find the card container
         let element = image.parentElement;
-        let card = null;
+        let card = element;
 
         for (let depth = 0; element && depth < 6; depth++) {
             const rect = element.getBoundingClientRect();
@@ -85,20 +89,31 @@ function getImageCards() {
             element = element.parentElement;
         }
 
-        if (card && !seen.has(card)) {
-            seen.add(card);
-            cards.push(card);
-        }
+        items.push({ card, src });
     }
 
-    return cards;
+    return items;
+}
+
+function scrollGallery() {
+    window.scrollBy({ top: 800, behavior: "smooth" });
+    const scrollers = document.querySelectorAll("main, [role='main'], [class*='scroll' i], [class*='gallery' i], [class*='grid' i], div");
+    for (const el of scrollers) {
+        if (el.scrollHeight > el.clientHeight + 50 && el.clientHeight > 200) {
+            el.scrollBy({ top: 800, behavior: "smooth" });
+        }
+    }
 }
 
 async function clickDownload2K(card) {
+    // Dismiss any stuck menus first
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await sleep(100);
+
     card.scrollIntoView({ behavior: "smooth", block: "center" });
     card.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
     card.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-    await sleep(200);
+    await sleep(250);
 
     const menuButton = findMenuButton(card);
     if (!menuButton) {
@@ -113,7 +128,7 @@ async function clickDownload2K(card) {
         const downloadOption = await waitFor(() => findText(/download/i), 600);
         if (downloadOption) {
             downloadOption.click();
-            option2K = await waitFor(() => findText(/\b2k\b/i), 1000);
+            option2K = await waitFor(() => findText(/\b2k\b/i), 1200);
         }
     }
 
@@ -137,49 +152,33 @@ async function startDownloading() {
 
     running = true;
     paused = false;
+    let scrollRetries = 0;
 
     while (running) {
         await waitIfPaused();
-
         if (!running) break;
 
-        const cards = getImageCards();
+        const items = getImageCards();
+        const nextItem = items.find(item => !processedSrcs.has(item.src));
 
-        const nextCard = cards.find(card => !processed.has(card));
-
-        if (!nextCard) {
-            // Scroll to reveal more images.
-            window.scrollBy({
-                top: Math.max(400, window.innerHeight * 0.7),
-                behavior: "smooth"
-            });
-
-            await sleep(1200);
-
-            const newCards = getImageCards();
-            const hasNewCard = newCards.some(
-                card => !processed.has(card)
-            );
-
-            if (!hasNewCard) {
-                // Check once more after allowing lazy-loaded images to appear.
+        if (!nextItem) {
+            if (scrollRetries < 5) {
+                scrollRetries++;
+                console.log(`[Flow 2K] Scrolling for more images (attempt ${scrollRetries}/5)...`);
+                scrollGallery();
                 await sleep(1500);
-
-                const finalCards = getImageCards();
-
-                if (!finalCards.some(card => !processed.has(card))) {
-                    break;
-                }
+                continue;
             }
-
-            continue;
+            console.log("[Flow 2K] No more new images found after 5 scroll attempts.");
+            break;
         }
 
-        // Mark before processing to prevent duplicate attempts.
-        processed.add(nextCard);
+        // Reset scroll retry counter whenever we find an unprocessed image
+        scrollRetries = 0;
+        processedSrcs.add(nextItem.src);
 
         try {
-            await clickDownload2K(nextCard);
+            await clickDownload2K(nextItem.card);
             downloaded++;
         } catch (error) {
             failed++;
@@ -189,7 +188,7 @@ async function startDownloading() {
         console.log({
             downloaded,
             failed,
-            remainingOnScreen: cards.length
+            remainingOnScreen: items.length
         });
     }
 
@@ -207,10 +206,6 @@ chrome.runtime.onMessage.addListener(
         switch (message.command) {
             case "START":
                 if (!running) {
-                    downloaded = 0;
-                    failed = 0;
-                    processed = new WeakSet();
-
                     startDownloading();
                 }
 
