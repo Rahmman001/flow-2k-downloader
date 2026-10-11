@@ -41,7 +41,7 @@ document.getElementById("stop").onclick =
 
 const namingSelect = document.getElementById("namingMode");
 chrome.storage.local.get("namingMode", res => {
-    if (res.namingMode) namingSelect.value = res.namingMode;
+    namingSelect.value = res.namingMode || "sequential_oldest";
 });
 namingSelect.onchange = () => {
     chrome.storage.local.set({ namingMode: namingSelect.value });

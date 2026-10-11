@@ -41,6 +41,29 @@ async function waitFor(predicate, timeout = 1500) {
     return null;
 }
 
+function extractCardTime(card) {
+    const raw = card.getAttribute("data-timestamp") || card.getAttribute("data-created") || card.getAttribute("data-time");
+    if (raw) {
+        const n = Number(raw);
+        if (!isNaN(n)) return n;
+        const d = Date.parse(raw);
+        if (!isNaN(d)) return d;
+    }
+    const timeEl = card.querySelector("time");
+    if (timeEl) {
+        const d = Date.parse(timeEl.getAttribute("datetime") || timeEl.innerText);
+        if (!isNaN(d)) return d;
+    }
+    for (const el of card.querySelectorAll("span, p, div")) {
+        const t = el.innerText?.trim();
+        if (t && /(?:am|pm|\b\d{1,2}:\d{2}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b)/i.test(t)) {
+            const d = Date.parse(t);
+            if (!isNaN(d)) return d;
+        }
+    }
+    return null;
+}
+
 function getImageCards() {
     const items = [];
     const seenCards = new Set();
@@ -60,16 +83,18 @@ function getImageCards() {
         if (!key || card.dataset.flowProcessed === "true") continue;
 
         const label = (img.alt || img.title || card.getAttribute("aria-label") || card.innerText || "").trim().toLowerCase();
-        items.push({ card, key, label });
+        const time = extractCardTime(card);
+        items.push({ card, key, label, time });
     }
 
     return items;
 }
 
-function scrollGallery() {
-    window.scrollBy({ top: 800, behavior: "smooth" });
+function scrollGallery(direction = "down") {
+    const delta = direction === "up" ? -800 : 800;
+    window.scrollBy({ top: delta, behavior: "smooth" });
     const scroller = document.querySelector("main, [role='main'], [class*='scroll' i], [class*='gallery' i], [class*='grid' i]");
-    if (scroller) scroller.scrollBy({ top: 800, behavior: "smooth" });
+    if (scroller) scroller.scrollBy({ top: delta, behavior: "smooth" });
 }
 
 function updateHUD(text) {
@@ -134,24 +159,58 @@ async function startDownloading() {
     paused = false;
     let scrollRetries = 0;
 
+    let namingMode = "sequential_oldest";
+    try {
+        const s = await chrome.storage.local.get("namingMode");
+        if (s.namingMode) namingMode = s.namingMode;
+    } catch (e) {}
+
     let existingFiles = new Set();
     try {
         const resp = await chrome.runtime.sendMessage({ command: "GET_EXISTING_FILES" });
         if (resp?.files) existingFiles = new Set(resp.files);
     } catch (e) {}
 
+    // If downloading from oldest to newest, load the timeline downwards to reveal the oldest items first
+    if (namingMode === "sequential_oldest") {
+        updateHUD("⚡ Flow 2K: Scanning project timeline to reach 1st image...");
+        let lastCount = 0;
+        for (let i = 0; i < 15; i++) {
+            if (!running) break;
+            scrollGallery("down");
+            await sleep(700);
+            const count = document.querySelectorAll("img").length;
+            if (count === lastCount && i > 3) break;
+            lastCount = count;
+        }
+    }
+
     while (running) {
         await waitIfPaused();
         if (!running) break;
 
-        const items = getImageCards();
+        let items = getImageCards();
+
+        // Order by creation time:
+        if (namingMode === "sequential_oldest") {
+            const hasTimes = items.some(it => it.time !== null);
+            if (hasTimes) {
+                // Earliest timestamp first
+                items.sort((a, b) => (a.time || Infinity) - (b.time || Infinity));
+            } else {
+                // Google Flow lists newest at top, oldest at bottom -> reverse so bottom (oldest) comes first
+                items.reverse();
+            }
+        }
+
         const nextItem = items.find(item => !processedKeys.has(item.key));
 
         if (!nextItem) {
             if (scrollRetries < 5) {
                 scrollRetries++;
                 updateHUD(`⚡ Flow 2K: Loading more images (${scrollRetries}/5)...`);
-                scrollGallery();
+                // If oldest mode, scroll upwards towards top/newest; otherwise scroll down
+                scrollGallery(namingMode === "sequential_oldest" ? "up" : "down");
                 await sleep(1500);
                 continue;
             }

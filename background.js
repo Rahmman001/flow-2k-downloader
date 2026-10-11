@@ -15,7 +15,8 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
     const base = item.filename.split(/[/\\]/).pop();
 
     chrome.storage.local.get("namingMode", (storage) => {
-        const isSequential = storage.namingMode === "sequential";
+        const mode = storage.namingMode || "sequential_oldest";
+        const isSequential = mode.startsWith("sequential");
         const ext = base.split(".").pop() || "png";
         const targetName = isSequential
             ? `image_${String(fileCounter++).padStart(3, "0")}.${ext}`
