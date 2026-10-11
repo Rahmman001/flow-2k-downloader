@@ -4,6 +4,33 @@ A lightweight Google Chrome extension (Manifest V3) that automates batch downloa
 
 ---
 
+## 🛑 The Problem
+
+Google Flow (`labs.google` / `flow.google.com`) is powerful for generative visuals, but exporting your work at maximum quality is tedious:
+
+- **Batch download only gives you 1K:** Google Flow's built-in project download feature only exports lower-resolution **1K** images.
+- **2K requires painful manual clicking:** If you want the ultra-sharp **2K Upscaled** versions, you have to do it by hand for every single image:
+  1. Hover over the card
+  2. Click the options menu (`⋮` or download icon)
+  3. Click **Download**
+  4. Click **2K**
+  5. Repeat 50 to 200+ times for your entire project!
+- **Messy downloads folder:** Downloading dozens of files individually scatters them across your main Downloads folder with no grouping.
+
+---
+
+## 💡 Why This Extension Exists
+
+**Flow 2K Downloader** was built to eliminate this repetitive manual grind with one click.
+
+It automates the entire sequence for you:
+- Finds every image card in your gallery.
+- Handles the hover, menu clicks, and selects **2K Upscaled**.
+- Auto-scrolls through the project so lazy-loaded images aren't missed.
+- Neatly organizes all images into a clean `Downloads/Flow-2K/` folder without renaming them.
+
+---
+
 ## Features
 
 - **Automated 2K Batch Download:** Loops through generated image cards on Google Flow, opens their menu, and selects the 2K resolution option.
