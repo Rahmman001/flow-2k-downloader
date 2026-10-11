@@ -159,7 +159,7 @@ async function startDownloading() {
     paused = false;
     let scrollRetries = 0;
 
-    let namingMode = "sequential_oldest";
+    let namingMode = "original";
     try {
         const s = await chrome.storage.local.get("namingMode");
         if (s.namingMode) namingMode = s.namingMode;
