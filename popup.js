@@ -39,5 +39,13 @@ document.getElementById("resume").onclick =
 document.getElementById("stop").onclick =
     () => sendCommand("STOP");
 
+const namingSelect = document.getElementById("namingMode");
+chrome.storage.local.get("namingMode", res => {
+    if (res.namingMode) namingSelect.value = res.namingMode;
+});
+namingSelect.onchange = () => {
+    chrome.storage.local.set({ namingMode: namingSelect.value });
+};
+
 sendCommand("STATUS");
 setInterval(() => sendCommand("STATUS"), 1000);

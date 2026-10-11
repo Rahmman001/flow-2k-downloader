@@ -194,6 +194,7 @@ async function startDownloading() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.command) {
         case "START":
+            chrome.runtime.sendMessage({ command: "RESET_COUNTER" });
             if (!running) startDownloading();
             sendResponse({ status: "Downloading..." });
             break;
