@@ -1,4 +1,4 @@
-const DELAY = 1000;
+const DELAY = 1800;
 
 let running = false;
 let paused = false;
@@ -82,14 +82,15 @@ function getImageCards() {
             const rect = element.getBoundingClientRect();
             if (rect.width >= 120 && rect.height >= 100) {
                 card = element;
-                if (findMenuButton(element) || element.getAttribute('role') || /card|item|tile/i.test(element.className || '')) {
+                if (findMenuButton(element) || element.getAttribute("role") || /card|item|tile/i.test(element.className || "")) {
                     break;
                 }
             }
             element = element.parentElement;
         }
 
-        items.push({ card, src });
+        const label = (image.alt || image.title || card.getAttribute("aria-label") || card.innerText || "").trim().toLowerCase();
+        items.push({ card, src, label });
     }
 
     return items;
@@ -105,15 +106,34 @@ function scrollGallery() {
     }
 }
 
+function updateHUD(text) {
+    let hud = document.getElementById("flow-2k-hud");
+    if (!text) {
+        if (hud) hud.remove();
+        return;
+    }
+    if (!hud) {
+        hud = document.createElement("div");
+        hud.id = "flow-2k-hud";
+        hud.style.cssText = "position:fixed;bottom:24px;right:24px;background:#181818;color:#fff;padding:8px 16px;border-radius:24px;font-family:Arial,sans-serif;font-size:12px;font-weight:600;z-index:999999;box-shadow:0 4px 16px rgba(0,0,0,0.5);border:1px solid #333;pointer-events:none;";
+        document.body.appendChild(hud);
+    }
+    hud.textContent = text;
+}
+
 async function clickDownload2K(card) {
     // Dismiss any stuck menus first
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await sleep(100);
 
     card.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    // Modern Material 3 Pointer Events + legacy Mouse Events
+    card.dispatchEvent(new PointerEvent("pointerenter", { bubbles: true }));
+    card.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
     card.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
     card.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-    await sleep(250);
+    await sleep(300);
 
     const menuButton = findMenuButton(card);
     if (!menuButton) {
@@ -143,7 +163,8 @@ async function clickDownload2K(card) {
 
 async function waitIfPaused() {
     while (paused && running) {
-        await sleep(200);
+        updateHUD(`⏸ Flow 2K: Paused (${downloaded} saved)`);
+        await sleep(250);
     }
 }
 
@@ -170,18 +191,29 @@ async function startDownloading() {
         if (!nextItem) {
             if (scrollRetries < 5) {
                 scrollRetries++;
-                console.log(`[Flow 2K] Scrolling for more images (attempt ${scrollRetries}/5)...`);
+                updateHUD(`⚡ Flow 2K: Loading more images (${scrollRetries}/5)...`);
                 scrollGallery();
                 await sleep(1500);
                 continue;
             }
-            console.log("[Flow 2K] No more new images found after 5 scroll attempts.");
             break;
         }
 
-        // Reset scroll retry counter whenever we find an unprocessed image
         scrollRetries = 0;
         processedSrcs.add(nextItem.src);
+
+        // Skip if label matches any existing file in Downloads/Flow-2K/
+        const isExisting = Array.from(existingFiles).some(file => {
+            const base = file.replace(/\.[^/.]+$/, "");
+            return base.length > 5 && nextItem.label.includes(base);
+        });
+
+        if (isExisting) {
+            console.log(`[Flow 2K] Skipping "${nextItem.label}" (already saved on disk).`);
+            continue;
+        }
+
+        updateHUD(`⚡ Flow 2K: Saving image (${downloaded + 1} saved, ${items.length} detected)`);
 
         try {
             await clickDownload2K(nextItem.card);
@@ -190,21 +222,13 @@ async function startDownloading() {
             failed++;
             console.error("Image download failed:", error);
         }
-
-        console.log({
-            downloaded,
-            failed,
-            remainingOnScreen: items.length
-        });
     }
 
     running = false;
     paused = false;
 
-    console.log("Flow download process finished.", {
-        downloaded,
-        failed
-    });
+    updateHUD(`✅ Flow 2K: Finished! ${downloaded} saved.`);
+    setTimeout(() => updateHUD(null), 4000);
 }
 
 chrome.runtime.onMessage.addListener(
@@ -214,12 +238,12 @@ chrome.runtime.onMessage.addListener(
                 if (!running) {
                     startDownloading();
                 }
-
                 sendResponse({ status: "Downloading..." });
                 break;
 
             case "PAUSE":
                 paused = true;
+                updateHUD(`⏸ Flow 2K: Paused (${downloaded} saved)`);
                 sendResponse({ status: "Paused." });
                 break;
 
@@ -231,14 +255,15 @@ chrome.runtime.onMessage.addListener(
             case "STOP":
                 running = false;
                 paused = false;
+                updateHUD(null);
                 sendResponse({ status: "Stopped." });
                 break;
 
             case "STATUS":
                 sendResponse({
                     status: running
-                        ? (paused ? `Paused (${downloaded} saved).` : `Downloading (${downloaded} saved)...`)
-                        : (downloaded > 0 ? `Finished: ${downloaded} saved.` : "Ready to start.")
+                        ? (paused ? `Paused (${downloaded} saved).` : `Downloading (${downloaded} saved, ${failed} failed)...`)
+                        : (downloaded > 0 ? `Finished: ${downloaded} saved (${failed} failed).` : "Ready to start.")
                 });
                 break;
 
