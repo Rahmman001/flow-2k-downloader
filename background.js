@@ -1,3 +1,5 @@
+const seenFilenames = new Set();
+
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
     const isFlow = (
         (item.url && (item.url.includes("google") || item.url.includes("flow") || item.url.includes("aisandbox"))) ||
@@ -11,15 +13,29 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
 
     const base = item.filename.split(/[/\\]/).pop();
 
-    chrome.downloads.search({ state: "complete" }, (results) => {
+    // 1. In-memory check: block duplicates in same session (even while first is downloading)
+    if (seenFilenames.has(base)) {
+        console.log(`[Flow 2K] Blocked duplicate download in session: ${base}`);
+        chrome.downloads.cancel(item.id, () => {
+            chrome.downloads.erase({ id: item.id });
+        });
+        suggest();
+        return;
+    }
+    seenFilenames.add(base);
+
+    // 2. Disk check: block duplicates already completed in previous sessions
+    chrome.downloads.search({}, (results) => {
         const alreadyExists = (results || []).some(
             prev => prev.id !== item.id &&
                     prev.filename &&
                     prev.filename.endsWith(`Flow-2K/${base}`) &&
+                    prev.state !== "interrupted" &&
                     prev.exists !== false
         );
 
         if (alreadyExists) {
+            console.log(`[Flow 2K] Blocked already existing file on disk: ${base}`);
             chrome.downloads.cancel(item.id, () => {
                 chrome.downloads.erase({ id: item.id });
             });

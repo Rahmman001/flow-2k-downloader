@@ -2,7 +2,7 @@ const DELAY = 1800;
 
 let running = false;
 let paused = false;
-let processedSrcs = new Set();
+let processedKeys = new Set();
 let downloaded = 0;
 let failed = 0;
 
@@ -43,16 +43,24 @@ async function waitFor(predicate, timeout = 1500) {
 
 function getImageCards() {
     const items = [];
-    const seenSrcs = new Set();
+    const seenCards = new Set();
 
     for (const img of getVisibleElements("img")) {
-        const src = img.currentSrc || img.src || "";
-        if (!src || img.naturalWidth < 80 || img.naturalHeight < 80 || seenSrcs.has(src)) continue;
-        seenSrcs.add(src);
+        if (img.naturalWidth < 80 || img.naturalHeight < 80) continue;
 
         const card = img.closest("[data-item], [role='listitem'], [class*='card' i], [class*='tile' i]") || img.parentElement?.parentElement || img.parentElement;
-        const label = (img.alt || img.title || card?.getAttribute("aria-label") || card?.innerText || "").trim().toLowerCase();
-        items.push({ card, src, label });
+        if (!card || seenCards.has(card)) continue;
+        seenCards.add(card);
+
+        // Normalize image key (strip resolution suffixes like =s512 so upscale doesn't change key)
+        const rawSrc = img.currentSrc || img.src || "";
+        const cleanSrc = rawSrc.split("=")[0].split("?")[0];
+        const key = card.getAttribute("data-id") || card.id || cleanSrc;
+
+        if (!key || card.dataset.flowProcessed === "true") continue;
+
+        const label = (img.alt || img.title || card.getAttribute("aria-label") || card.innerText || "").trim().toLowerCase();
+        items.push({ card, key, label });
     }
 
     return items;
@@ -137,7 +145,7 @@ async function startDownloading() {
         if (!running) break;
 
         const items = getImageCards();
-        const nextItem = items.find(item => !processedSrcs.has(item.src));
+        const nextItem = items.find(item => !processedKeys.has(item.key));
 
         if (!nextItem) {
             if (scrollRetries < 5) {
@@ -151,7 +159,8 @@ async function startDownloading() {
         }
 
         scrollRetries = 0;
-        processedSrcs.add(nextItem.src);
+        processedKeys.add(nextItem.key);
+        nextItem.card.dataset.flowProcessed = "true";
 
         // Skip if label matches any existing file in Downloads/Flow-2K/
         const isExisting = Array.from(existingFiles).some(file => {
