@@ -1,0 +1,31 @@
+{
+    "manifest_version": 3,
+    "name": "Flow 2K Downloader",
+    "version": "1.0.0",
+    "description": "Automatically download Google Flow images in 2K.",
+    "permissions": [
+        "activeTab",
+        "downloads"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "host_permissions": [
+        "https://labs.google/*",
+        "https://flow.google.com/*"
+    ],
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://labs.google/*",
+                "https://flow.google.com/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        }
+    ]
+}

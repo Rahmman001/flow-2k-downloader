@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Flow 2K Downloader</title>
+
+    <style>
+        body {
+            width: 260px;
+            padding: 16px;
+            font-family: Arial, sans-serif;
+            background: #181818;
+            color: white;
+        }
+
+        h3 {
+            margin-top: 0;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #start {
+            background: #4285f4;
+            color: white;
+        }
+
+        #pause,
+        #resume,
+        #stop {
+            background: #333;
+            color: white;
+        }
+
+        #status {
+            margin-top: 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+
+<body>
+    <h3>Flow 2K Downloader</h3>
+
+    <p>Resolution: 2K Upscaled</p>
+    <p>Delay: 1 second</p>
+
+    <button id="start">Start Download</button>
+    <button id="pause">Pause</button>
+    <button id="resume">Resume</button>
+    <button id="stop">Stop</button>
+
+    <div id="status">Ready to start.</div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
