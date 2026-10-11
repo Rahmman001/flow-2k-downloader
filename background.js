@@ -23,6 +23,7 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
             chrome.downloads.cancel(item.id, () => {
                 chrome.downloads.erase({ id: item.id });
             });
+            suggest();
             return;
         }
 

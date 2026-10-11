@@ -21,8 +21,9 @@ async function sendCommand(command) {
             statusElement.textContent = response.status;
         }
     } catch (error) {
-        statusElement.textContent =
-            "Open Google Flow and reload the page first.";
+        if (command !== "STATUS") {
+            statusElement.textContent = "Open Google Flow and reload the page first.";
+        }
     }
 }
 

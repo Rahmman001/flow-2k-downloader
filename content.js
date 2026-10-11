@@ -3,51 +3,31 @@ const DELAY = 1800;
 let running = false;
 let paused = false;
 let processedSrcs = new Set();
-
 let downloaded = 0;
 let failed = 0;
 
-const sleep = ms =>
-    new Promise(resolve => setTimeout(resolve, ms));
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function getVisibleElements(selector) {
-    return [...document.querySelectorAll(selector)].filter(element => {
-        const rect = element.getBoundingClientRect();
-
-        return (
-            rect.width > 0 &&
-            rect.height > 0 &&
-            getComputedStyle(element).visibility !== "hidden"
-        );
+    return [...document.querySelectorAll(selector)].filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && el.offsetParent !== null;
     });
 }
 
 function findText(pattern) {
     const isRegex = pattern instanceof RegExp;
-    return getVisibleElements(
-        "button, [role='menuitem'], [role='button'], li, span, a"
-    ).find(element => {
-        const text = (element.innerText || element.getAttribute("aria-label") || "").trim();
+    return getVisibleElements("button, [role='menuitem'], [role='button'], li, span, a").find(el => {
+        const text = (el.innerText || el.getAttribute("aria-label") || "").trim();
         return isRegex ? pattern.test(text) : text.toLowerCase().includes(pattern.toLowerCase());
     });
 }
 
 function findMenuButton(card) {
     const buttons = card.querySelectorAll("button, [role='button']");
-
-    return [...buttons].find(button => {
-        const text = (
-            button.getAttribute("aria-label") ||
-            button.getAttribute("title") ||
-            button.innerText || ""
-        ).toLowerCase();
-
-        return (
-            text.includes("more") ||
-            text.includes("menu") ||
-            text.includes("option") ||
-            text.includes("download")
-        );
+    return [...buttons].find(b => {
+        const t = (b.getAttribute("aria-label") || b.getAttribute("title") || b.innerText || "").toLowerCase();
+        return t.includes("more") || t.includes("menu") || t.includes("option") || t.includes("download");
     }) || buttons[0];
 }
 
@@ -65,31 +45,13 @@ function getImageCards() {
     const items = [];
     const seenSrcs = new Set();
 
-    for (const image of getVisibleElements("img")) {
-        const src = image.currentSrc || image.src || "";
-        if (!src || image.naturalWidth < 80 || image.naturalHeight < 80) {
-            continue;
-        }
-
-        if (seenSrcs.has(src)) continue;
+    for (const img of getVisibleElements("img")) {
+        const src = img.currentSrc || img.src || "";
+        if (!src || img.naturalWidth < 80 || img.naturalHeight < 80 || seenSrcs.has(src)) continue;
         seenSrcs.add(src);
 
-        // Walk upward to find the card container
-        let element = image.parentElement;
-        let card = element;
-
-        for (let depth = 0; element && depth < 6; depth++) {
-            const rect = element.getBoundingClientRect();
-            if (rect.width >= 120 && rect.height >= 100) {
-                card = element;
-                if (findMenuButton(element) || element.getAttribute("role") || /card|item|tile/i.test(element.className || "")) {
-                    break;
-                }
-            }
-            element = element.parentElement;
-        }
-
-        const label = (image.alt || image.title || card.getAttribute("aria-label") || card.innerText || "").trim().toLowerCase();
+        const card = img.closest("[data-item], [role='listitem'], [class*='card' i], [class*='tile' i]") || img.parentElement?.parentElement || img.parentElement;
+        const label = (img.alt || img.title || card?.getAttribute("aria-label") || card?.innerText || "").trim().toLowerCase();
         items.push({ card, src, label });
     }
 
@@ -98,12 +60,8 @@ function getImageCards() {
 
 function scrollGallery() {
     window.scrollBy({ top: 800, behavior: "smooth" });
-    const scrollers = document.querySelectorAll("main, [role='main'], [class*='scroll' i], [class*='gallery' i], [class*='grid' i], div");
-    for (const el of scrollers) {
-        if (el.scrollHeight > el.clientHeight + 50 && el.clientHeight > 200) {
-            el.scrollBy({ top: 800, behavior: "smooth" });
-        }
-    }
+    const scroller = document.querySelector("main, [role='main'], [class*='scroll' i], [class*='gallery' i], [class*='grid' i]");
+    if (scroller) scroller.scrollBy({ top: 800, behavior: "smooth" });
 }
 
 function updateHUD(text) {
@@ -122,13 +80,10 @@ function updateHUD(text) {
 }
 
 async function clickDownload2K(card) {
-    // Dismiss any stuck menus first
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await sleep(100);
 
     card.scrollIntoView({ behavior: "smooth", block: "center" });
-
-    // Modern Material 3 Pointer Events + legacy Mouse Events
     card.dispatchEvent(new PointerEvent("pointerenter", { bubbles: true }));
     card.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
     card.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
@@ -136,13 +91,9 @@ async function clickDownload2K(card) {
     await sleep(300);
 
     const menuButton = findMenuButton(card);
-    if (!menuButton) {
-        throw new Error("Image menu not found");
-    }
-
+    if (!menuButton) throw new Error("Image menu not found");
     menuButton.click();
 
-    // Check if 2K option appears directly, or if Download submenu needs clicking
     let option2K = await waitFor(() => findText(/\b2k\b/i), 800);
     if (!option2K) {
         const downloadOption = await waitFor(() => findText(/download/i), 600);
@@ -231,46 +182,36 @@ async function startDownloading() {
     setTimeout(() => updateHUD(null), 4000);
 }
 
-chrome.runtime.onMessage.addListener(
-    (message, sender, sendResponse) => {
-        switch (message.command) {
-            case "START":
-                if (!running) {
-                    startDownloading();
-                }
-                sendResponse({ status: "Downloading..." });
-                break;
-
-            case "PAUSE":
-                paused = true;
-                updateHUD(`⏸ Flow 2K: Paused (${downloaded} saved)`);
-                sendResponse({ status: "Paused." });
-                break;
-
-            case "RESUME":
-                paused = false;
-                sendResponse({ status: "Resumed." });
-                break;
-
-            case "STOP":
-                running = false;
-                paused = false;
-                updateHUD(null);
-                sendResponse({ status: "Stopped." });
-                break;
-
-            case "STATUS":
-                sendResponse({
-                    status: running
-                        ? (paused ? `Paused (${downloaded} saved).` : `Downloading (${downloaded} saved, ${failed} failed)...`)
-                        : (downloaded > 0 ? `Finished: ${downloaded} saved (${failed} failed).` : "Ready to start.")
-                });
-                break;
-
-            default:
-                sendResponse({ status: "Unknown command." });
-        }
-
-        return true;
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    switch (message.command) {
+        case "START":
+            if (!running) startDownloading();
+            sendResponse({ status: "Downloading..." });
+            break;
+        case "PAUSE":
+            paused = true;
+            updateHUD(`⏸ Flow 2K: Paused (${downloaded} saved)`);
+            sendResponse({ status: "Paused." });
+            break;
+        case "RESUME":
+            paused = false;
+            sendResponse({ status: "Resumed." });
+            break;
+        case "STOP":
+            running = false;
+            paused = false;
+            updateHUD(null);
+            sendResponse({ status: "Stopped." });
+            break;
+        case "STATUS":
+            sendResponse({
+                status: running
+                    ? (paused ? `Paused (${downloaded} saved).` : `Downloading (${downloaded} saved, ${failed} failed)...`)
+                    : (downloaded > 0 ? `Finished: ${downloaded} saved (${failed} failed).` : "Ready to start.")
+            });
+            break;
+        default:
+            sendResponse({ status: "Unknown command." });
     }
-);
+    return true;
+});
