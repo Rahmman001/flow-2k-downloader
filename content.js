@@ -69,14 +69,16 @@ function getImageCards() {
     const seenCards = new Set();
 
     for (const img of getVisibleElements("img")) {
-        if (img.naturalWidth < 80 || img.naturalHeight < 80) continue;
+        const w = img.naturalWidth || img.getBoundingClientRect().width;
+        const h = img.naturalHeight || img.getBoundingClientRect().height;
+        if (w < 80 || h < 80) continue;
 
         const card = img.closest("[data-item], [role='listitem'], [class*='card' i], [class*='tile' i]") || img.parentElement?.parentElement || img.parentElement;
         if (!card || seenCards.has(card)) continue;
         seenCards.add(card);
 
         // Normalize image key (strip resolution suffixes like =s512 so upscale doesn't change key)
-        const rawSrc = img.currentSrc || img.src || "";
+        const rawSrc = img.currentSrc || img.src || img.getAttribute("src") || "";
         const cleanSrc = rawSrc.split("=")[0].split("?")[0];
         const key = card.getAttribute("data-id") || card.id || cleanSrc;
 
@@ -91,10 +93,28 @@ function getImageCards() {
 }
 
 function scrollGallery(direction = "down") {
-    const delta = direction === "up" ? -800 : 800;
+    const delta = direction === "up" ? -1000 : 1000;
     window.scrollBy({ top: delta, behavior: "smooth" });
-    const scroller = document.querySelector("main, [role='main'], [class*='scroll' i], [class*='gallery' i], [class*='grid' i]");
-    if (scroller) scroller.scrollBy({ top: delta, behavior: "smooth" });
+    if (document.scrollingElement) {
+        document.scrollingElement.scrollBy({ top: delta, behavior: "smooth" });
+    }
+
+    // Scroll any scrollable container on Google Flow
+    document.querySelectorAll("div, main, section, [role='feed'], [role='main']").forEach(el => {
+        if (el.scrollHeight > el.clientHeight + 40) {
+            const overflow = window.getComputedStyle(el).overflowY;
+            if (overflow === "auto" || overflow === "scroll") {
+                el.scrollBy({ top: delta, behavior: "smooth" });
+            }
+        }
+    });
+
+    // Native scrollIntoView on the edge image to trigger infinite scroll
+    const imgs = document.querySelectorAll("img");
+    if (imgs.length > 0) {
+        const target = direction === "up" ? imgs[0] : imgs[imgs.length - 1];
+        target.scrollIntoView({ behavior: "smooth", block: direction === "up" ? "start" : "end" });
+    }
 }
 
 function updateHUD(text) {
@@ -175,12 +195,12 @@ async function startDownloading() {
     if (namingMode === "sequential_oldest") {
         updateHUD("⚡ Flow 2K: Scanning project timeline to reach 1st image...");
         let lastCount = 0;
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < 40; i++) {
             if (!running) break;
             scrollGallery("down");
-            await sleep(700);
+            await sleep(900);
             const count = document.querySelectorAll("img").length;
-            if (count === lastCount && i > 3) break;
+            if (count === lastCount && i > 5) break;
             lastCount = count;
         }
     }
@@ -206,12 +226,12 @@ async function startDownloading() {
         const nextItem = items.find(item => !processedKeys.has(item.key));
 
         if (!nextItem) {
-            if (scrollRetries < 5) {
+            if (scrollRetries < 8) {
                 scrollRetries++;
-                updateHUD(`⚡ Flow 2K: Loading more images (${scrollRetries}/5)...`);
+                updateHUD(`⚡ Flow 2K: Loading more images (${scrollRetries}/8)...`);
                 // If oldest mode, scroll upwards towards top/newest; otherwise scroll down
                 scrollGallery(namingMode === "sequential_oldest" ? "up" : "down");
-                await sleep(1500);
+                await sleep(1800);
                 continue;
             }
             break;
