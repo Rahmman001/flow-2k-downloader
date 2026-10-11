@@ -1,4 +1,4 @@
-const seenFilenames = new Set();
+const seenUrls = new Set();
 let fileCounter = 1;
 
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
@@ -22,25 +22,27 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
             ? `image_${String(fileCounter++).padStart(3, "0")}.${ext}`
             : base;
 
-        // 1. In-memory check: block duplicates in same session
-        if (seenFilenames.has(base)) {
-            console.log(`[Flow 2K] Blocked duplicate download in session: ${base}`);
+        // 1. In-memory check: block duplicate download of exact same URL in same session
+        if (item.url && seenUrls.has(item.url)) {
+            console.log(`[Flow 2K] Blocked duplicate download of URL: ${item.url}`);
             chrome.downloads.cancel(item.id, () => {
                 chrome.downloads.erase({ id: item.id });
             });
             suggest();
             return;
         }
-        seenFilenames.add(base);
+        if (item.url) seenUrls.add(item.url);
 
-        // 2. Disk check: block duplicates already completed in previous sessions
+        // 2. Disk check: block if exact same URL or target file already completed
         chrome.downloads.search({}, (results) => {
             const alreadyExists = (results || []).some(
                 prev => prev.id !== item.id &&
-                        prev.filename &&
-                        prev.filename.endsWith(`Flow-2K/${targetName}`) &&
                         prev.state !== "interrupted" &&
-                        prev.exists !== false
+                        prev.exists !== false &&
+                        (
+                            (item.url && prev.url === item.url) ||
+                            (!isSequential && prev.filename && prev.filename.endsWith(`Flow-2K/${targetName}`))
+                        )
             );
 
             if (alreadyExists) {
@@ -62,7 +64,7 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.command === "RESET_COUNTER") {
         fileCounter = 1;
-        seenFilenames.clear();
+        seenUrls.clear();
     } else if (message.command === "GET_EXISTING_FILES") {
         chrome.downloads.search({ state: "complete" }, (results) => {
             const files = (results || [])

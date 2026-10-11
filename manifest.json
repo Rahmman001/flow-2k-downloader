@@ -5,7 +5,8 @@
     "description": "Automatically download Google Flow images in 2K.",
     "permissions": [
         "activeTab",
-        "downloads"
+        "downloads",
+        "storage"
     ],
     "background": {
         "service_worker": "background.js"
