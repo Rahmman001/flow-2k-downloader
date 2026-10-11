@@ -154,6 +154,12 @@ async function startDownloading() {
     paused = false;
     let scrollRetries = 0;
 
+    let existingFiles = new Set();
+    try {
+        const resp = await chrome.runtime.sendMessage({ command: "GET_EXISTING_FILES" });
+        if (resp?.files) existingFiles = new Set(resp.files);
+    } catch (e) {}
+
     while (running) {
         await waitIfPaused();
         if (!running) break;
